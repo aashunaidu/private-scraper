@@ -17,6 +17,7 @@ from typing import Any
 import aiohttp
 import asyncpg
 from bs4 import BeautifulSoup
+from dotenv import load_dotenv
 
 LOGGER = logging.getLogger("layer2_scraper")
 
@@ -737,6 +738,7 @@ def parse_retry_after(value: str | None) -> int | None:
 
 
 async def main() -> None:
+    load_dotenv()
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
     dsn = os.getenv("DATABASE_URL")
