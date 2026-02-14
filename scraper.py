@@ -13,9 +13,11 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import aiohttp
 import asyncpg
+from asyncpg.exceptions import ClientConfigurationError
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 
@@ -725,6 +727,22 @@ def parse_http_datetime(value: str | None) -> datetime | None:
         return None
 
 
+
+
+def normalize_database_url(raw_dsn: str) -> str:
+    dsn = raw_dsn.strip()
+    if not dsn:
+        return dsn
+
+    split = urlsplit(dsn)
+    scheme = split.scheme.lower()
+
+    if scheme.startswith("postgresql+") or scheme.startswith("postgres+"):
+        normalized = split._replace(scheme="postgresql")
+        return urlunsplit(normalized)
+
+    return dsn
+
 def parse_retry_after(value: str | None) -> int | None:
     if not value:
         return None
@@ -741,16 +759,25 @@ async def main() -> None:
     load_dotenv()
     logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format="%(asctime)s %(levelname)s %(name)s %(message)s")
 
-    dsn = os.getenv("DATABASE_URL")
-    if not dsn:
+    raw_dsn = os.getenv("DATABASE_URL")
+    if not raw_dsn:
         raise RuntimeError("DATABASE_URL is required")
+
+    dsn = normalize_database_url(raw_dsn)
 
     worker_id = os.getenv("WORKER_ID", f"worker-{os.getpid()}")
     batch_size = int(os.getenv("BATCH_SIZE", "20"))
     concurrency = int(os.getenv("CONCURRENCY", "5"))
 
     db = Database(dsn)
-    await db.connect()
+    try:
+        await db.connect()
+    except ClientConfigurationError as exc:
+        raise RuntimeError(
+            "Invalid DATABASE_URL for asyncpg. Use postgres:// or postgresql://. "
+            "If you copied a SQLAlchemy URL like postgresql+psycopg://, it is now normalized automatically, "
+            "but please verify the URL format and credentials."
+        ) from exc
     try:
         scheduler = Scheduler(db=db, batch_size=batch_size, worker_id=worker_id, concurrency=concurrency)
         await scheduler.run_forever()
