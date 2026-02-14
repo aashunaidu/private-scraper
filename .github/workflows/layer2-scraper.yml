@@ -1,0 +1,37 @@
+name: Layer 2 Content Scraper
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    concurrency:
+      group: layer2-scraper
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run scraper (safe resume)
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          WORKER_ID: gha-${{ github.run_id }}-${{ github.run_attempt }}
+          BATCH_SIZE: '25'
+          CONCURRENCY: '5'
+          LOG_LEVEL: INFO
+        run: python scraper.py
